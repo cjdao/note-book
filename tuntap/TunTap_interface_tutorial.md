@@ -7,9 +7,9 @@
 
 * 它的唯一作用，使得用户空间的程序能够直接获取ip层或以太网层的网络流量(貌似raw socket也有这样的功能，它们的区别是什么呢？)。  
 
-* 用户空间的程序需要从一个tun/tap 接口获取网络流量数据前，必须先挂载该接口。挂载到某个tun/tap 接口的用户程序会得到一个文件描述符，用户程序可以据此进行read/write等操作.  
+* 用户空间的程序需要从一个tun/tap 接口获取网络流量数据前，必须先连接该接口。连接到某个tun/tap 接口的用户程序会得到一个文件描述符，用户程序可以据此进行read/write等操作.  
 
-* 当内核网络栈向tun/tap接口发生数据时，挂载了该接口的用户空间的程序就可以通过read操作获取到网络数据。当用户程序向tun/tap接口write数据时，内核的网络协议栈就会收到该数据。  
+* 当内核网络栈向tun/tap接口发送数据时，连接了该接口的用户空间的程序就可以通过read操作获取到网络数据。当用户程序向tun/tap接口write数据时，内核的网络协议栈就会收到该数据。  
 
 * tap 接口和 tun 接口的区别在于，tap接口传输的是以太网帧，而tun接口传输的是ip数据包。
 
@@ -20,14 +20,19 @@
 ### 如何创建tap/tun接口
 
 #### 命令行层面的创建
-iproute2工具箱里有相关的命令支持tap/tun的创建, 
+* iproute2工具箱里有相关的命令支持tap/tun的创建(持久性的接口) 
 ```
 ip tuntap add dev ${interface name} mode tap/tun
 ```
+* 列出系统中所有的tap/tun接口
+```
+ip tuntap list 
+```
 
-### 代码层面的创建
+#### 代码层面的创建
 1. 权限问题
 只有root或者拥有CAP_NET_ADMIN能力的程序才能创建tap/tun接口
+
 2. 创建方法
  1. 以读写的方式打开文件**/dev/net/tun**, 获得一个文件描述符
  2. 在步骤1获得的文件描述符上执行一个ioctl操作，参数有两个，一个是TUNSETIFF，另一个是一个数据结构指针，包含描述该接口的参数(如接口名，是tun还是tap接口等)
@@ -113,3 +118,85 @@ a_name = malloc(IFNAMSIZ);
 a_name[0]='\0';
 tapfd = tun_alloc(a_name, IFF_TAP);    /* let the kernel pick a name */
 ```
+
+### tun/tap接口的持久化，及所有者 
+* tun/tap接口的持久化
+```cpp
+// 接口持久化
+ioctl(tap_fd, TUNSETPERSIST, 1);
+// 接口临时化
+ioctl(tap_fd, TUNSETPERSIST, 0);
+```
+
+* tun/tap接口的所有者，及所属组
+```cpp
+// 设置所有者
+ioctl(tap_fd, TUNSETOWNER, owner);
+// 设置所属组
+ioctl(tap_fd, TUNSETGROUP, group);
+```
+* tunctl 工具所实现的上述功能的代码片段
+```cpp
+...
+  /* "delete" is set if the user wants to delete (ie, make nonpersistent)
+     an existing interface; otherwise, the user is creating a new
+     interface */
+  if(delete) {
+    /* remove persistent status */
+    if(ioctl(tap_fd, TUNSETPERSIST, 0) < 0){
+      perror("disabling TUNSETPERSIST");
+      exit(1);
+    }
+    printf("Set '%s' nonpersistent\n", ifr.ifr_name);
+  }
+  else {
+    /* emulate behaviour prior to TUNSETGROUP */
+    if(owner == -1 && group == -1) {
+      owner = geteuid();
+    }
+
+    if(owner != -1) {
+      if(ioctl(tap_fd, TUNSETOWNER, owner) < 0){
+        perror("TUNSETOWNER");
+        exit(1);
+      }
+    }
+    if(group != -1) {
+      if(ioctl(tap_fd, TUNSETGROUP, group) < 0){
+        perror("TUNSETGROUP");
+        exit(1);
+      }
+    }
+
+    if(ioctl(tap_fd, TUNSETPERSIST, 1) < 0){
+      perror("enabling TUNSETPERSIST");
+      exit(1);
+    }
+
+    if(brief)
+      printf("%s\n", ifr.ifr_name);
+    else {
+      printf("Set '%s' persistent and owned by", ifr.ifr_name);
+      if(owner != -1)
+          printf(" uid %d", owner);
+      if(group != -1)
+          printf(" gid %d", group);
+      printf("\n");
+    }
+  }
+  ...
+```
+
+### 应用程序连接tun/tap接口
+连接一个tun/tap接口与创建一个tun/tap接口的代码是一模一样的，即tun_alloc()函数的实现。当然，欲连接tun/tap接口的用户必须满足以下条件:  
+* 被连接的tun/tap接口已经存在，并且用户是该接口的所有者
+* 用户必须拥有/dev/net/tun文件的读写权限
+* 提供给tun_alloc()的flag参数必须与创建时的匹配(如创建时指定的是IFF_TUN，则连接时必须也是IFF_TUN)
+
+当用户调用ioctl(TUNSETIFF)时，内核是如何区分用户是希望创建一个tun/tap接口还是连接一个tun/tap接口的呢？
+* 如果没有提供接口名称，或者名称指定的接口不存在，则内核认为，用户程序希望创建一个新的tun/tap接口。这只有root用户能成功执行.
+* 名称指定的接口存在，则内核认为用户希望连接一个之前已经创建了的tun/tap接口
+
+> Note: 内核源文件drivers/net/tun.c里的tun_attach(), tun_net_init(), tun_set_iff(), tun_chr_ioctl()函数提供大部分的tun/tap接口的功能实现
+
+> Note: 非root权限的用户是无法配置tun/tap接口的(如指定IP)
