@@ -5,4 +5,12 @@
   * 接收方反馈
   * 重传
 
-* 停止等待协议(stop-and-wait)
+* [停止等待协议(stop-and-wait)](http://www.erg.abdn.ac.uk/users/gorry/eg3567/arq-pages/saw.html)
+
+* [交替比特协议(alternating-bit protocol)]()
+
+
+* 为了解决停止等待协议效率低下的问题，引进了**流水线技术**，该技术需要对停止等待协议进行以下改进：
+　* 序列号编号上限必须增加
+　* 协议的发送方和接收方必须能缓存多个分组
+

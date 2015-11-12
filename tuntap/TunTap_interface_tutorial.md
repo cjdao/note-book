@@ -1,6 +1,7 @@
 ## Tun/Tap interface tutorial
 ### 本文主要参考：  
 [Tun/Tap interface tutorial](http://backreference.org/2010/03/26/tuntap-interface-tutorial/)
+[Inside the Linux Packet Filter](http://www.linuxjournal.com/article/4852)
 
 ### 它们是什么以及如何工作的
 * tun/tap 接口是一种纯软件上的接口，它仅存在于内核空间。它不与任何物理网络设备关联。
@@ -200,3 +201,75 @@ ioctl(tap_fd, TUNSETGROUP, group);
 > Note: 内核源文件drivers/net/tun.c里的tun_attach(), tun_net_init(), tun_set_iff(), tun_chr_ioctl()函数提供大部分的tun/tap接口的功能实现
 
 > Note: 非root权限的用户是无法配置tun/tap接口的(如指定IP)
+
+### 练练手
+创建一个tun接口，并设置IP
+```bash
+# sudo ip tuntap add dev tun2 mode tun
+# sudo ip tuntap add dev tap2 mode tap
+# sudo ip l set dev tun2 up
+# sudo ip l set dev tap2 up
+# sudo ip a add dev tun2 10.1.1.1/24
+# sudo ip a add dev tap2 10.0.0.1/24
+# sudo ip route show 
+...
+10.0.0.0/24 dev tap2  proto kernel  scope link  src 10.0.0.10 
+10.1.1.0/24 dev tun2  proto kernel  scope link  src 10.1.1.1 
+...
+```
+ping 一下
+```bash
+# ping 10.1.1.1
+PING 10.1.1.1 (10.1.1.1) 56(84) bytes of data.
+64 bytes from 10.1.1.1: icmp_seq=1 ttl=64 time=0.106 ms
+64 bytes from 10.1.1.1: icmp_seq=2 ttl=64 time=0.070 ms
+
+# ping 10.0.0.1
+PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.
+64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=0.108 ms
+64 bytes from 10.0.0.1: icmp_seq=2 ttl=64 time=0.066 ms
+```
+可以看到是通的
+
+tcpdump 分析端口数据
+```bash
+# sudo tcpdump -i tun2 -n icmp
+# sudo tcpdump -i tap2 -n icmp
+```
+发现上面两个接口都没有数据流
+这是正确的但是也是容易使人混乱的地方，究其原因，是当我们向一个系统的接口IP执行Ping命令时，内核能够正确的识别出，数据包不需要通过该接口发生出去，内核协议栈自身能够回复这些icmp请求。所以，我们在接口出看不到任何数据包。
+
+好,那我们ping一下跟tun/tap接口ip同一个网段的IP, 理论上，这个时候，我们应该能通过tcpdump抓到数据包了吧。但是，令人沮丧的是，我们还是没有抓到任何数据包。
+```bash
+# ping 10.0.0.2
+# ping 10.1.1.2
+```
+到这里我们还是无法从tun/tap接口获取到数据包，通过实验，我们发现当tun/tap接口没有被挂载的时候，是抓取不到数据包的。原因嘛，还不知道：P
+
+那我们下面就下来实现一个挂载到tun/tap接口，并抓取数据包的程序([tunclient.c]())
+然后，我们通过该程序挂载tun/tap接口
+```bash
+sudo ./tunclient tun2 tun
+sudo ./tunclient tap2 tap
+```
+于是乎，我们看到了这个
+```bash
+#  sudo tcpdump -i tun2 -n 
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on tun2, link-type RAW (Raw IP), capture size 65535 bytes
+16:20:16.876830 IP 10.1.1.1 > 10.1.1.2: ICMP echo request, id 10496, seq 1, length 64
+16:20:17.876345 IP 10.1.1.1 > 10.1.1.2: ICMP echo request, id 10496, seq 2, length 64
+
+# sudo tcpdump -i tap2 -n 
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on tap2, link-type EN10MB (Ethernet), capture size 65535 bytes
+16:17:50.336292 ARP, Request who-has 10.0.0.2 tell 10.0.0.1, length 28
+16:17:51.336276 ARP, Request who-has 10.0.0.2 tell 10.0.0.1, length 28
+```
+注意，我们在tun接口看到的是icmp包，而在tap接口看到的是arp包
+
+同时，我们的tunclient程序也接受到了数据包，这意味着什么呢，看下面，懒得翻译了：
+>Now what can we do with this data? Well, we could for example emulate the behavior of the target of the traffic we're reading; again, to keep things simple, let's stick with the ping example. We could analyze the received packet, extract the information needed to reply from the IP header, ICMP header and payload, build an IP packet containing an appropriate ICMP echo reply message, and send it back (ie, write it into the descriptor associated with the tun/tap device). This way the originator of the ping will actually receive an answer. Of course you're not limited to ping, so you can implement all kinds of network protocols. In general, this implies parsing the received packet, and act accordingly. If using tap, to correctly build reply frames you would probably need to implement ARP in your code. All of this is exactly what User Mode Linux does: it attaches a modified Linux kernel running in userspace to a tap interface that exist on the host, and communicates with the host through that. Of course, being a full Linux kernel, it does implement TCP/IP and ethernet. Newer virtualization platforms like libvirt use tap interfaces extensively to communicate with guests that support them like qemu/kvm; the interfaces have usually names like vnet0, vnet1 etc. and last only as long as the guest they connect to is running, so they're not persistent, but you can see them if you run ip link show and/or brctl show while guests are running.
+>In the same way, you can attach with your own code to the interface and practice network programming and/or ethernet and TCP/IP stack implementation. To get started, you can look at (you guessed it) drivers/net/tun.c, functions tun_get_user() and tun_put_user() to see how the tun driver does that on the kernel side (beware that barely scratches the surface of the complete network packet management in the kernel, which is very complex).
+
+### 隧道
