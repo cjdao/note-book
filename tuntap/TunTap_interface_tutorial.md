@@ -1,7 +1,4 @@
 ## Tun/Tap interface tutorial
-### 本文主要参考：  
-[Tun/Tap interface tutorial](http://backreference.org/2010/03/26/tuntap-interface-tutorial/)
-[Inside the Linux Packet Filter](http://www.linuxjournal.com/article/4852)
 
 ### 它们是什么以及如何工作的
 * tun/tap 接口是一种纯软件上的接口，它仅存在于内核空间。它不与任何物理网络设备关联。
@@ -203,7 +200,7 @@ ioctl(tap_fd, TUNSETGROUP, group);
 > Note: 非root权限的用户是无法配置tun/tap接口的(如指定IP)
 
 ### 练练手
-创建一个tun接口，并设置IP
+创建一个tun接口，并设置IP:  
 ```bash
 # sudo ip tuntap add dev tun2 mode tun
 # sudo ip tuntap add dev tap2 mode tap
@@ -217,7 +214,7 @@ ioctl(tap_fd, TUNSETGROUP, group);
 10.1.1.0/24 dev tun2  proto kernel  scope link  src 10.1.1.1 
 ...
 ```
-ping 一下
+ping 一下:  
 ```bash
 # ping 10.1.1.1
 PING 10.1.1.1 (10.1.1.1) 56(84) bytes of data.
@@ -229,28 +226,28 @@ PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.
 64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=0.108 ms
 64 bytes from 10.0.0.1: icmp_seq=2 ttl=64 time=0.066 ms
 ```
-可以看到是通的
+可以看到是通的  
 
-tcpdump 分析端口数据
+tcpdump 分析端口数据:  
 ```bash
 # sudo tcpdump -i tun2 -n icmp
 # sudo tcpdump -i tap2 -n icmp
 ```
-发现上面两个接口都没有数据流
-这是正确的但是也是容易使人混乱的地方，究其原因，是当我们向一个系统的接口IP执行Ping命令时，内核能够正确的识别出，数据包不需要通过该接口发生出去，内核协议栈自身能够回复这些icmp请求。所以，我们在接口出看不到任何数据包。
+发现上面两个接口都没有数据流  
+这是正确的但是也是容易使人混乱的地方，究其原因，是当我们向一个系统的接口IP执行Ping命令时，内核能够正确的识别出，数据包不需要通过该接口发生出去，内核协议栈自身能够回复这些icmp请求。所以，我们在接口出看不到任何数据包。  
 
 好,那我们ping一下跟tun/tap接口ip同一个网段的IP, 理论上，这个时候，我们应该能通过tcpdump抓到数据包了吧。但是，令人沮丧的是，我们还是没有抓到任何数据包。
 ```bash
 # ping 10.0.0.2
 # ping 10.1.1.2
 ```
-到这里我们还是无法从tun/tap接口获取到数据包，通过实验，我们发现当tun/tap接口没有被挂载的时候，是抓取不到数据包的。原因嘛，还不知道：P
+到这里我们还是无法从tun/tap接口获取到数据包，通过实验，我们发现当tun/tap接口没有被挂载的时候，是抓取不到数据包的。原因嘛，还不知道：P  
 
-那我们下面就下来实现一个挂载到tun/tap接口，并抓取数据包的程序([tunclient.c]())
-然后，我们通过该程序挂载tun/tap接口
+那我们下面就下来实现一个挂载到tun/tap接口，并抓取数据包的程序([tunclient.c]())  
+然后，我们通过该程序挂载tun/tap接口  
 ```bash
-sudo ./tunclient tun2 tun
-sudo ./tunclient tap2 tap
+# sudo ./tunclient tun2 tun
+# sudo ./tunclient tap2 tap
 ```
 于是乎，我们看到了这个
 ```bash
@@ -273,3 +270,8 @@ listening on tap2, link-type EN10MB (Ethernet), capture size 65535 bytes
 >In the same way, you can attach with your own code to the interface and practice network programming and/or ethernet and TCP/IP stack implementation. To get started, you can look at (you guessed it) drivers/net/tun.c, functions tun_get_user() and tun_put_user() to see how the tun driver does that on the kernel side (beware that barely scratches the surface of the complete network packet management in the kernel, which is very complex).
 
 ### 隧道
+
+
+### 本文主要参考：  
+[Tun/Tap interface tutorial](http://backreference.org/2010/03/26/tuntap-interface-tutorial/)  
+[Inside the Linux Packet Filter](http://www.linuxjournal.com/article/4852)
