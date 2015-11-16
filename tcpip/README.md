@@ -14,3 +14,8 @@
 　* 序列号编号上限必须增加
 　* 协议的发送方和接收方必须能缓存多个分组
 
+
+
+
+[TCP/IP重传超时--RTO](http://www.orczhou.com/index.php/2011/10/tcpip-protocol-start-rto/)
+
