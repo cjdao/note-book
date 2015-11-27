@@ -21,3 +21,5 @@
 
 
 [Congestion control](http://ecomputernotes.com/computernetworkingnotes/communication-networks/what-is-congestion-control-describe-the-congestion-control-algorithm-commonly-used)
+
+[Defenses Against TCP SYN Flooding Attacks](http://www.cisco.com/web/about/ac123/ac147/archived_issues/ipj_9-4/syn_flooding_attacks.html)
