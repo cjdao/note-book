@@ -82,3 +82,68 @@ struct net_protocol // 封装了IPv4 协议族中 网络层向传输层传输数
    这个函数需要做什么：
    1. socket->ops (即struct proto_ops)
    2. socket->sk (即struct sock)
+
+
+
+
+-----------
+### TCP
+// net/ipv4/af_inet.c
+struct net_protocol   tcp_protocol
+
+// 传输控制块的继承关系
+sock_common
+  ^    ^
+  |    |
+  |    sock <- inet_sock <- inet_connection_sock <- tcp_sock
+  |
+  request_sock <- inet_request_sock <- tcp_request_sock
+
+// TCP传输控制块，三种
+struct tcp_request_sock
+struct tcp_sock
+struct tcp_timewait_sock
+
+// 面向连接的传输控制块
+struct inet_connection_sock // 继承于 struct inet_sock
+
+// 传输层相关的操作集，包括向网络层发送数据，传输层的setsockopt等, tcp的实例为ipv4_specific
+inet_connection_sock_af_ops
+
+// TCP选项信息
+struct tcp_options_received
+
+// TCP在skb中的私有信息控制块
+struct tcp_skb_cb
+
+// TCP proto 操作集和 proto_ops操作集
+实例 tcp_prot
+实例 inet_stream_ops
+
+// TCP 头部结构
+struct tcphdr
+
+
+
+## tcp server socket (passive socket)启动过程
+------
+## socket
+## bind 
+## listen
+## accept
+
+### 网络命名空间
+// include/net/net_namespace.h
+struct net // 代表一个网络命名空间??
+
+
+// 允许绑定一个非本地IP
+// If set, allows processes to bind() to non-local IP addresses, which can be quite useful,   
+// but may break some applications. The default value is 0.
+
+/proc/sys/net/ipv4/ip_nonlocal_bind
+
+## tcp client socket (active socket)启动过程
+------
+## socket
+## connect
