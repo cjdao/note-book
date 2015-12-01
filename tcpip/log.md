@@ -23,8 +23,8 @@
 
 
 ### Virtual Devices
-* Possible relationship between virtual and real devices
-![]()
+* Possible relationship between virtual and real devices  
+![](https://github.com/cjdao/note-book/blob/master/images/linux_virtual_devices.png)
 
 #### List of Linux virtual devices
 * Bonding  
