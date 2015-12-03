@@ -40,11 +40,11 @@ struct sock {
 //..
 };
 ```
-它们是手拉着手的好兄弟啊！
-它们是如何牵手的？  
+它们是手拉着手的好兄弟啊！  
+* 它们是如何牵手的？    
 在net_proto_family实例的create函数发起的调用链中，都会通过调用sock_init_data函数 (net/core/sock.c)让他们牵手(可看看ipv4协议族的实现)
 
-内核为啥要搞这么一对宝贝出来呢？  
+* 内核为啥要搞这么一对宝贝出来呢？    
 用户层通过socket系统调用创建了套接字后，还需要进行其他的操作来实现网络通信，而这其他的操作就需要socket和sock来支持了。  
 再看看它们的定义片段
 ```cpp
@@ -69,12 +69,13 @@ struct proto 定义在include/net/sock.h中，内部也有很多函数指针，�
 不过如果比较简单，则可以只实现proto_ops实例内的各函数即可了, proto内就不需要实现任何函数指针了(如af_unix.c内PF_UNIX协议的实现).这个时候为什么还需要sock实例呢？
 
 * 怎么创建socket实例和sock实例
-内核提供了两个通用函数用于完成此任务：  
-sock_alloc -- 创建socket实例
-sk_alloc -- 创建sock实例
-在用户层程序执行socket系统调用后，这两个实例就会被创建出来。
+
+内核提供了两个通用函数用于完成此任务：    
+sock_alloc -- 创建socket实例  
+sk_alloc -- 创建sock实例  
+在用户层程序执行socket系统调用后，这两个实例就会被创建出来。  
 socket实例在\__sock_create中被创建，随后，\__sock_create根据协议族调用注册到内核的net_families中的net_proto_family实例中create函数，   
-在create函数中sock实例会被创建出来，并且最终通过调用sock_init_data函数，让两者成功牵手。
+在create函数中sock实例会被创建出来，并且最终通过调用sock_init_data函数，让两者成功牵手。  
 
 
 ### IPv4协议族
@@ -87,7 +88,7 @@ static const struct net_proto_family inet_family_ops = {
     .owner  = THIS_MODULE,
 };
 ```
-* 再看其注册net_proto_family实例的地方
+* 再看其注册net_proto_family实例的地方  
 ```cpp
 // net/ipv4/af_inet.c
 // ipv4 协议族 的初始化入口函数:  
@@ -104,7 +105,7 @@ static int __init inet_init(void)
 fs_initcall(inet_init);
 ```
 
-* 下面透过inet_create函数看看如何创建socket套接字 
+* 下面透过inet_create函数看看如何创建socket套接字   
 我们可以在inet_create函数看到我们已经熟悉的几个点
 ```cpp
 static int inet_create(struct net *net, struct socket *sock, int protocol,
