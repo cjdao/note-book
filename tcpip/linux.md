@@ -23,7 +23,7 @@ struct net_protocol_family // 在内核在表示一个套接字协议族
 ```cpp
 // IPv4 协议族
 static const struct net_proto_family inet_family_ops = {
-    .family = PF_INET,                                                                                                                                 
+    .family = PF_INET, 
     .create = inet_create,  // 创建该协议族的套接字都会通过这个函数来实现
     .owner  = THIS_MODULE,
 };

@@ -46,11 +46,19 @@ int main(int argc, char *argv[])
     
     while(1) {
         connfd = accept(listenfd, NULL, NULL);
+#if 0
+        if (connfd < 0) {
+            perror("Accept: ");
+            continue;
+        }
         printf("Time server get a request from client\n");
         ticks = time(NULL);
         snprintf (buff, sizeof(buff), "%.24s\n", ctime(&ticks));
         write(connfd, buff, strlen(buff));
         close(connfd);
+#endif
+        if (connfd>=0)
+            close(connfd);
     }
 
     return 0;

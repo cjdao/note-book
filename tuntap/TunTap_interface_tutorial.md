@@ -243,7 +243,7 @@ tcpdump 分析端口数据:
 ```
 到这里我们还是无法从tun/tap接口获取到数据包，通过实验，我们发现当tun/tap接口没有被挂载的时候，是抓取不到数据包的。原因嘛，还不知道：P  
 
-那我们下面就下来实现一个挂载到tun/tap接口，并抓取数据包的程序([tunclient.c]())  
+那我们下面就下来实现一个挂载到tun/tap接口，并抓取数据包的程序([tunclient.c](https://github.com/cjdao/note-book/blob/master/tuntap/src/tunclient.c))  
 然后，我们通过该程序挂载tun/tap接口  
 ```bash
 # sudo ./tunclient tun2 tun
@@ -270,6 +270,10 @@ listening on tap2, link-type EN10MB (Ethernet), capture size 65535 bytes
 >In the same way, you can attach with your own code to the interface and practice network programming and/or ethernet and TCP/IP stack implementation. To get started, you can look at (you guessed it) drivers/net/tun.c, functions tun_get_user() and tun_put_user() to see how the tun driver does that on the kernel side (beware that barely scratches the surface of the complete network packet management in the kernel, which is very complex).
 
 ### 隧道
+下面我们来看看，tuntap接口更牛b的用法。它可以让我们在不需要重新实现TCP/IP协议栈的情况下，实现隧道功能。  
+基本原理是什么呢？  
+首先，关于什么是隧道，可以看看[这里](http://www.enterprisenetworkingplanet.com/netsp/article.php/3624566/Networking-101-Understanding-Tunneling.htm)，和[这里](https://en.wikipedia.org/wiki/Tunneling_protocol)  
+
 
 
 ### 本文主要参考：  
