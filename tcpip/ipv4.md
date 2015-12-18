@@ -26,6 +26,7 @@ struct net_proto_family {
 struct socket  // 应用层套接字的内核表示
 // include/net/sock.h
 struct sock    // 套接字在协议族内的表示结构，所有的套接字最后通过该结构来使用网络协议栈的服务
+
 看看它们的定义片段
 ```cpp
 struct socket {
@@ -131,4 +132,69 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
     // ...
 }
 ```
+
+由前面的介绍，我们指定对于一个socket套接字而言，在内核中真正负责实际工作的是struct proto_ops和struct proto所指向的实例。
+那么这两个实例，在inet_create中是怎么创建的呢?
+
+在ipv4中，所有的实际协议实现都在数组inetsw_array(net/ipv4/af_inet.c)中进行描述:
+```cpp
+/* Upon startup we insert all the elements in inetsw_array[] into
+ * the linked list inetsw.
+ */
+static struct inet_protosw inetsw_array[] =
+{
+    {   // TCP 协议
+        .type =       SOCK_STREAM,
+        .protocol =   IPPROTO_TCP,
+        .prot =       &tcp_prot,
+        .ops =        &inet_stream_ops,
+        .no_check =   0,
+        .flags =      INET_PROTOSW_PERMANENT |
+                  INET_PROTOSW_ICSK,
+    },
+
+    {   // UDP 协议
+        .type =       SOCK_DGRAM,
+        .protocol =   IPPROTO_UDP,
+        .prot =       &udp_prot,
+        .ops =        &inet_dgram_ops,
+        .no_check =   UDP_CSUM_DEFAULT,
+        .flags =      INET_PROTOSW_PERMANENT,
+       },
+
+       { // ICMP
+        .type =       SOCK_DGRAM,
+        .protocol =   IPPROTO_ICMP,
+        .prot =       &ping_prot,
+        .ops =        &inet_dgram_ops,
+        .no_check =   UDP_CSUM_DEFAULT,
+        .flags =      INET_PROTOSW_REUSE,
+       },
+
+       { // IPv4
+           .type =       SOCK_RAW,
+           .protocol =   IPPROTO_IP,    /* wild card */
+           .prot =       &raw_prot,
+           .ops =        &inet_sockraw_ops,
+           .no_check =   UDP_CSUM_DEFAULT,
+           .flags =      INET_PROTOSW_REUSE,
+       }
+};
+```
+这个inetsw_array数组的内容会在IPv4协议初始化期间，被插入inetsw链表中。  
+先看看inetsw
+```cpp
+/* The inetsw table contains everything that inet_create needs to
+ * build a new socket.
+ */
+static struct list_head inetsw[SOCK_MAX];
+```
+这是一个链表数组，每一种类型的socket对于一条链表，因此这个链表数组包含了所有IPv4协议相关的东东.
+**inet_register_protosw()**(net/ipv4/af_inet.c)函数负责将inetsw_array数组中对应的项，注册到inetsw中。
+> 为什么要把静态数组inetsw_array里的内容，倒腾到动态链表inetsw中?
+> linux内核支持动态加载额外的协议实现!!!
+
+回过头来，看看inet_create的实现，它会遍历inetsw中对应的类型的链表，找到适合的struct proto_ops和struct proto实例,
+具体到tcp socket的话，struct proto_ops的实例为inet_stream_ops, struct proto实例为tcp_prot.
+
 
