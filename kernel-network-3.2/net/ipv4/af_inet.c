@@ -199,12 +199,15 @@ int inet_listen(struct socket *sock, int backlog)
 	lock_sock(sk);
 
 	err = -EINVAL;
-    // 只有SOCK_STREAM类型 及 处于SS_UNCONNECTED状态的socket才能调用listen函数
+    // 只有SOCK_STREAM类型 及 处于SS_UNCONNECTED状态(什么情况下会处于该状态?)
+    // 的socket才能调用listen函数
 	if (sock->state != SS_UNCONNECTED || sock->type != SOCK_STREAM)
 		goto out;
 
 	old_state = sk->sk_state;
-    // ???
+
+    // 如果socket不处于TCP_CLOSE 或者TCP_LISTEN状态 不能调用listen函数
+    // 这个判断与前面的判断有重复的地方吗?
 	if (!((1 << old_state) & (TCPF_CLOSE | TCPF_LISTEN)))
 		goto out;
 
@@ -213,11 +216,13 @@ int inet_listen(struct socket *sock, int backlog)
 	 */
     // 对于一个socket而言，可以多次调用listen函数修改backlog参数
 	if (old_state != TCP_LISTEN) {
+        // inet_csk_listen_start 是正真实现listen的地方
 		err = inet_csk_listen_start(sk, backlog);
 		if (err)
 			goto out;
 	}
     // 修正backlog参数
+    // sk_max_ack_backlog socket 的accept队列的所能容纳的最大成员
 	sk->sk_max_ack_backlog = backlog;
 	err = 0;
 
@@ -472,6 +477,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 		goto out;
 
     // 如果绑定的地址协议不是AF_INET，并且（也不是AF_UNSPEC或者地址不是INADDR_ANY） 
+    // 
 	if (addr->sin_family != AF_INET) {
 		/* Compatibility games : accept AF_UNSPEC (mapped to AF_INET)
 		 * only if s_addr is INADDR_ANY.
@@ -706,6 +712,8 @@ int inet_accept(struct socket *sock, struct socket *newsock, int flags)
 {
 	struct sock *sk1 = sock->sk;
 	int err = -EINVAL;
+    // tcp socket 调用 inet_csk_accept 函数
+    // 生成一个新的sock实例 sk2
 	struct sock *sk2 = sk1->sk_prot->accept(sk1, flags, &err);
 
 	if (!sk2)
@@ -717,6 +725,7 @@ int inet_accept(struct socket *sock, struct socket *newsock, int flags)
 	WARN_ON(!((1 << sk2->sk_state) &
 		  (TCPF_ESTABLISHED | TCPF_CLOSE_WAIT | TCPF_CLOSE)));
 
+    // 将新的sock实例sk2绑定到新的socket实例newsock上
 	sock_graft(sk2, newsock);
 
 	newsock->state = SS_CONNECTED;

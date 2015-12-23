@@ -331,10 +331,12 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 	 * and that it has something pending.
 	 */
 	error = -EINVAL;
+    // 不是listen状态的socket 无法 调用accept !!!
 	if (sk->sk_state != TCP_LISTEN)
 		goto out_err;
 
 	/* Find already established connection */
+    // 如果accept 队列为空，EAGAIN返回或者进行休眠
 	if (reqsk_queue_empty(&icsk->icsk_accept_queue)) {
 		long timeo = sock_rcvtimeo(sk, flags & O_NONBLOCK);
 
@@ -342,12 +344,15 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err)
 		error = -EAGAIN;
 		if (!timeo)
 			goto out_err;
-
+        // 休眠等待accept 队列不为空, 超时时间为sk->sk_rcvtimeo
+        // sk->sk_rcvtimeo 默认在sock_init_data 函数中指定为MAX_SCHEDULE_TIMEOUT
+        // 可由socket 选项SO_RCVTIMEO指定
 		error = inet_csk_wait_for_connect(sk, timeo);
 		if (error)
 			goto out_err;
 	}
 
+    // 从listen socket的的icsk_accept_queue队列中摘取一个request sock
 	newsk = reqsk_queue_get_child(&icsk->icsk_accept_queue, sk);
 	WARN_ON(newsk->sk_state == TCP_SYN_RECV);
 out:
@@ -516,8 +521,9 @@ void inet_csk_reqsk_queue_hash_add(struct sock *sk, struct request_sock *req,
 	struct listen_sock *lopt = icsk->icsk_accept_queue.listen_opt;
 	const u32 h = inet_synq_hash(inet_rsk(req)->rmt_addr, inet_rsk(req)->rmt_port,
 				     lopt->hash_rnd, lopt->nr_table_entries);
-
+    // 往socket的listen 队列添加request sock 
 	reqsk_queue_hash_req(&icsk->icsk_accept_queue, h, req, timeout);
+    // 更新往socket的listen 队列信息
 	inet_csk_reqsk_queue_added(sk, timeout);
 }
 EXPORT_SYMBOL_GPL(inet_csk_reqsk_queue_hash_add);
@@ -735,7 +741,9 @@ int inet_csk_listen_start(struct sock *sk, const int nr_table_entries)
 {
 	struct inet_sock *inet = inet_sk(sk);
 	struct inet_connection_sock *icsk = inet_csk(sk);
-    //  
+
+    // icsk_accept_queue 管理队列初始化
+    // 注意nr_table_entries是由用户层传递下来的backlog数
 	int rc = reqsk_queue_alloc(&icsk->icsk_accept_queue, nr_table_entries);
 
 	if (rc != 0)
@@ -743,6 +751,8 @@ int inet_csk_listen_start(struct sock *sk, const int nr_table_entries)
 
 	sk->sk_max_ack_backlog = 0;
 	sk->sk_ack_backlog = 0;
+
+    // 延时ack机制初始化???
 	inet_csk_delack_init(sk);
 
 	/* There is race window here: we announce ourselves listening,
@@ -750,11 +760,16 @@ int inet_csk_listen_start(struct sock *sk, const int nr_table_entries)
 	 * It is OK, because this socket enters to hash table only
 	 * after validation is complete.
 	 */
+    // 更新socket的状态为 TCP_LISTEN
 	sk->sk_state = TCP_LISTEN;
+    // 如果在listen之前已经调用了bind，则inet->inet_num不为0，此时get_port验证该port的有效性
+    // 如果在listen之前未调用bind，则inet->inet_num为0，此时get_port会由系统分配一个port给该socket
+    // 在sk->sk_state = TCP_LISTEN; 和 get_port之间会有竟态条件???
 	if (!sk->sk_prot->get_port(sk, inet->inet_num)) {
 		inet->inet_sport = htons(inet->inet_num);
 
 		sk_dst_reset(sk);
+        // 调用tcp_prot 指向的 inet_hash函数 
 		sk->sk_prot->hash(sk);
 
 		return 0;

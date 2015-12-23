@@ -32,6 +32,7 @@ struct proto;
 struct request_values {
 };
 
+// request sock 相关的操作  tcp的实例为 tcp_request_sock_ops
 struct request_sock_ops {
 	int		family;
 	int		obj_size;
@@ -95,15 +96,15 @@ extern int sysctl_max_syn_backlog;
  * @max_qlen_log - log_2 of maximal queued SYNs/REQUESTs
  */
 struct listen_sock {
-	u8			max_qlen_log;
-	u8			synflood_warned;   // 
+	u8			max_qlen_log;      // 队列的最大长度的log2 (2^max_qlen_log=nr_table_entries)
+	u8			synflood_warned;   // 标记位，标记是否已经提出过 syn flood 告警
 	/* 2 bytes hole, try to use */
-	int			qlen;
-	int			qlen_young;
+	int			qlen;              // 队列的当前长度
+	int			qlen_young;        // 队列中没有重发synack的request sock个数
 	int			clock_hand;
-	u32			hash_rnd;
-	u32			nr_table_entries;
-	struct request_sock	*syn_table[0];
+	u32			hash_rnd;          // ???
+	u32			nr_table_entries;  // syn_table 哈希表的槽数
+	struct request_sock	*syn_table[0]; // 哈希表 对应的哈希函数为inet_synq_hash
 };
 
 /** struct request_sock_queue - queue of request_socks
@@ -194,12 +195,17 @@ static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue 
 static inline struct sock *reqsk_queue_get_child(struct request_sock_queue *queue,
 						 struct sock *parent)
 {
+    // 从accept队列头摘下一个request_sock
 	struct request_sock *req = reqsk_queue_remove(queue);
+    // 获取requst sock 对应的sock ??? 这个对应的sock是怎么来的?
 	struct sock *child = req->sk;
 
 	WARN_ON(child == NULL);
 
+    // 更新listen sock的相关信息, sk_ack_backlog--
 	sk_acceptq_removed(parent);
+
+    // 释放request sock
 	__reqsk_free(req);
 	return child;
 }
@@ -246,7 +252,7 @@ static inline void reqsk_queue_hash_req(struct request_sock_queue *queue,
 {
 	struct listen_sock *lopt = queue->listen_opt;
 
-	req->expires = jiffies + timeout;
+	req->expires = jiffies + timeout; 
 	req->retrans = 0;
 	req->sk = NULL;
 	req->dl_next = lopt->syn_table[hash];

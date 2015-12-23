@@ -150,6 +150,7 @@ struct inet_hashinfo {
 	 * table where wildcard'd TCP sockets can exist.  Hash function here
 	 * is just local port number.
 	 */
+    // 其他哈希表都是动态分配的，只有该哈希表是静态分配内存的，why??? ^
 	struct inet_listen_hashbucket	listening_hash[INET_LHTABLE_SIZE]
 					____cacheline_aligned_in_smp;
 

@@ -241,7 +241,9 @@ struct sock {
 	 * don't add nothing before this first member (__sk_common) --acme
 	 */
 	struct sock_common	__sk_common;
+// sk_node 和 sk_nulls_node 二者只能用其一
 #define sk_node			__sk_common.skc_node
+// sk_nulls_node 用于将socket加入listening 哈希表中
 #define sk_nulls_node		__sk_common.skc_nulls_node
 #define sk_refcnt		__sk_common.skc_refcnt
 #define sk_tx_queue_mapping	__sk_common.skc_tx_queue_mapping
@@ -254,9 +256,13 @@ struct sock {
 // ioctl 函数 的SO_REUSEADDR 修改该值 0/1
 #define sk_reuse		__sk_common.skc_reuse
 #define sk_bound_dev_if		__sk_common.skc_bound_dev_if
+// 用于将socket加入到bind 哈希表中 bhash
 #define sk_bind_node		__sk_common.skc_bind_node
+// 在sk_alloc中指向proto实例, 如tcp则指向tcp_prot
 #define sk_prot			__sk_common.skc_prot
+// socket 所在的网络命名空间，在sk_alloc中通过sock_net_set函数赋值
 #define sk_net			__sk_common.skc_net
+
 	socket_lock_t		sk_lock;
 	struct sk_buff_head	sk_receive_queue;
 	/*
@@ -318,8 +324,13 @@ struct sock {
 	rwlock_t		sk_callback_lock;
 	int			sk_err,
 				sk_err_soft;
+    
+    // socket 的accept队列当前容纳的成员个数
 	unsigned short		sk_ack_backlog;
+    // socket 的accept队列的所能容纳的最大成员
+    // 该值由listen系统调用的backlog参数指定， 最大值为(net.core.somaxconn)
 	unsigned short		sk_max_ack_backlog;
+
 	__u32			sk_priority;
 	struct pid		*sk_peer_pid;
 	const struct cred	*sk_peer_cred;
@@ -1274,6 +1285,7 @@ static inline int sk_tx_queue_get(const struct sock *sk)
 
 static inline void sk_set_socket(struct sock *sk, struct socket *sock)
 {
+    // ??? sk_tx_queue_clear
 	sk_tx_queue_clear(sk);
 	sk->sk_socket = sock;
 }
@@ -1302,7 +1314,10 @@ static inline void sock_orphan(struct sock *sk)
 static inline void sock_graft(struct sock *sk, struct socket *parent)
 {
 	write_lock_bh(&sk->sk_callback_lock);
+    // ??? sk_wq 
 	sk->sk_wq = parent->wq;
+
+    // sock和socket间指针互指
 	parent->sk = sk;
 	sk_set_socket(sk, parent);
 	security_sock_graft(sk, parent);
