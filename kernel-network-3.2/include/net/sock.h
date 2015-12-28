@@ -830,7 +830,8 @@ struct proto {
 
 	struct percpu_counter	*orphan_count;
 
-	struct request_sock_ops	*rsk_prot;
+    // request socket ops tcp实例为tcp_request_sock_ops 参考tcp_prot定义
+	struct request_sock_ops	*rsk_prot;  
 	struct timewait_sock_ops *twsk_prot;
 
 	union {

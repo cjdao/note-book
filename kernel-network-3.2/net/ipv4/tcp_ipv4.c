@@ -1235,14 +1235,17 @@ static int tcp_v4_inbound_md5_hash(struct sock *sk, const struct sk_buff *skb)
 
 #endif
 
+// tcp request socket 相关操作集
 struct request_sock_ops tcp_request_sock_ops __read_mostly = {
 	.family		=	PF_INET,
-	.obj_size	=	sizeof(struct tcp_request_sock),
-	.rtx_syn_ack	=	tcp_v4_rtx_synack,
-	.send_ack	=	tcp_v4_reqsk_send_ack,
+    // 分配tcp request socket时指定的大小, 在proto_register函数中(inet_init 中调用)，
+    // 该值用来创建tcp request socket相关的mem_cache
+	.obj_size	=	sizeof(struct tcp_request_sock), 
+	.rtx_syn_ack	=	tcp_v4_rtx_synack,   // 发送synack报文
+	.send_ack	=	tcp_v4_reqsk_send_ack,   // 发送ack报文
 	.destructor	=	tcp_v4_reqsk_destructor,
-	.send_reset	=	tcp_v4_send_reset,
-	.syn_ack_timeout = 	tcp_syn_ack_timeout,
+	.send_reset	=	tcp_v4_send_reset,       // 发送reset报文
+	.syn_ack_timeout = 	tcp_syn_ack_timeout, // 发送synack后，等待第三次握手报文超时处理
 };
 
 #ifdef CONFIG_TCP_MD5SIG
@@ -1263,7 +1266,10 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 	struct dst_entry *dst = NULL;
 	__be32 saddr = ip_hdr(skb)->saddr;
 	__be32 daddr = ip_hdr(skb)->daddr;
+
     // ??? isn 对端的初始化序列号?
+    // 由于TCP_SKB_CB(skb)->when在TCP接收处理一开始就被清零
+    // 所有isn此处总是 0.
 	__u32 isn = TCP_SKB_CB(skb)->when;
 	int want_cookie = 0;
 
@@ -1303,10 +1309,13 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 #endif
 
 	tcp_clear_options(&tmp_opt);
+    // tcp option 里如果没有mss option 就使用默认的TCP_MSS_DEFAULT
 	tmp_opt.mss_clamp = TCP_MSS_DEFAULT;
 	tmp_opt.user_mss  = tp->rx_opt.user_mss;
+    // 解析syn报文中的TCP选项
 	tcp_parse_options(skb, &tmp_opt, &hash_location, 0);
 
+    // TCP Cookie Option (RCF6013)
 	if (tmp_opt.cookie_plus > 0 &&
 	    tmp_opt.saw_tstamp &&
 	    !tp->rx_opt.cookie_out_never &&
@@ -1332,19 +1341,25 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 		want_cookie = 0;	/* not our kind of cookie */
 		tmp_ext.cookie_out_never = 0; /* false */
 		tmp_ext.cookie_plus = tmp_opt.cookie_plus;
-	} else if (!tp->rx_opt.cookie_in_always) {
+	} else if (!tp->rx_opt.cookie_in_always) { 
+        // socket TCP_COOKIE_TRANSACTIONS 设置不允许TCP COOKIE
 		/* redundant indications, but ensure initialization. */
 		tmp_ext.cookie_out_never = 1; /* true */
 		tmp_ext.cookie_plus = 0;
-	} else {
+	} else {  
+        // 如果  TCP_COOKIE_TRANSACTIONS 设置了 TCP_COOKIE_IN_ALWAYS,
+        // 而syn报文中没有 TCP COOKIE option 直接丢包
 		goto drop_and_release;
 	}
 	tmp_ext.cookie_in_always = tp->rx_opt.cookie_in_always;
 
+    // 需要发送syncookie 且 syn报文中没有timestamp iption
 	if (want_cookie && !tmp_opt.saw_tstamp)
 		tcp_clear_options(&tmp_opt);
 
 	tmp_opt.tstamp_ok = tmp_opt.saw_tstamp;
+    
+    // request sock初始化
 	tcp_openreq_init(req, &tmp_opt, skb);
 
 	ireq = inet_rsk(req);
@@ -1358,8 +1373,10 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 
 	if (!want_cookie || tmp_opt.tstamp_ok)
 		TCP_ECN_create_request(req, tcp_hdr(skb));
-
+    
+    // 回复syncookies
 	if (want_cookie) {
+        // 生成 syncookies isn
 		isn = cookie_v4_init_sequence(sk, skb, &req->mss);
 		req->cookie_ts = tmp_opt.tstamp_ok;
 	} else if (!isn) {
@@ -1385,6 +1402,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 			    (s32)(peer->tcp_ts - req->ts_recent) >
 							TCP_PAWS_WINDOW) {
 				NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_PAWSPASSIVEREJECTED);
+                // PAWS 丢包
 				goto drop_and_release;
 			}
 		}
@@ -1405,19 +1423,21 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 				       &saddr, ntohs(tcp_hdr(skb)->source));
 			goto drop_and_release;
 		}
-
+        // 生成普通的isn
 		isn = tcp_v4_init_sequence(skb);
 	}
+    // 回复synack 报文的初始isn
 	tcp_rsk(req)->snt_isn = isn;
+    // 回复synack 报文的时间
 	tcp_rsk(req)->snt_synack = tcp_time_stamp;
 
     // 服务端socket 发送synack报文
 	if (tcp_v4_send_synack(sk, dst, req,
 			       (struct request_values *)&tmp_ext) ||
-	    want_cookie)
+	    want_cookie) // 如果回复的是syncookies ，回复完后释放request socket 避免占用资源
 		goto drop_and_free;
 
-    // 往socket的listen队列添加request socket  TCP_TIMEOUT_INIT 为重发synack的时间
+    // 往socket的listen队列添加request socket  TCP_TIMEOUT_INIT 为重发synack的时间单位
 	inet_csk_reqsk_queue_hash_add(sk, req, TCP_TIMEOUT_INIT);
 	return 0;
 
@@ -1529,7 +1549,7 @@ put_and_exit:
 	goto exit;
 }
 EXPORT_SYMBOL(tcp_v4_syn_recv_sock);
-
+// 返回NULL 报文丢弃
 static struct sock *tcp_v4_hnd_req(struct sock *sk, struct sk_buff *skb)
 {
 	struct tcphdr *th = tcp_hdr(skb);
@@ -1538,10 +1558,10 @@ static struct sock *tcp_v4_hnd_req(struct sock *sk, struct sk_buff *skb)
 	struct request_sock **prev;
 	/* Find possible connection requests. */
 
-    // 在socket的request 哈希表中查找该request是否已经存在
+    // 在socket的request listen队列(哈希表)中查找该request是否已经存在
 	struct request_sock *req = inet_csk_search_req(sk, &prev, th->source,
 						       iph->saddr, iph->daddr);
-    // 该request 该request已经存在
+    // 该request 该request已经存在, 正常情况下应该是第三个握手报文
 	if (req)
 		return tcp_check_req(sk, skb, req, prev);
 
