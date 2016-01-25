@@ -5,7 +5,7 @@ client:
 socket -> connect -> write/read -> close
 
 server:
-socket -> listen -> accept -> read/write -> close
+socket -> bind -> listen -> accept -> read/write -> close
 
 在上面的tcp socket标准调用流程中，隐含着对于一条tcp连接而言，必经历的三个阶段:  
 1. 建立连接 -- 三次握手
@@ -32,3 +32,20 @@ sock_common
  inet_timewait_sock <------------------------ tcp_timewait_sock
 
 * inet_connection_sock 所有面向连接传输控制块的表示，在inet_sock的基础上，增加有关连接、确认和重传等成员。
+
+
+* 从服务端的角度看，一条tcp连接的建立，需经历以下几个系统调用:socket -> bind -> listen -> accept
+其中socket是建立套接字
+bind是绑定地址及端口号
+listen进入监听状态，等待客户端的syn报文
+而accept则是让用户进程进入数据读写阶段
+
+* tcp服务端，与tcp连接建立过程相关的数据结构
+request_sock_queue
+listen_sock
+tcp_request_sock
+request_sock_ops
+
+* bind 系统调用的实现
+
+
